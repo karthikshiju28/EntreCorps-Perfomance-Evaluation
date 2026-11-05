@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireSlt } from '@/lib/session';
 import { parseRosterCsv } from '@/lib/roster';
+import { REPORTS_BUCKET, reportPath, MAX_REPORT_BYTES } from '@/lib/reports';
 
 type R = { ok: boolean; message: string };
 const done = (message: string, ok = true): R => { revalidatePath('/admin'); return { ok, message }; };
@@ -136,4 +137,24 @@ export async function importResponses(_: R | null, fd: FormData): Promise<R> {
     if (error) unmatched.push(`${r['Evaluator Name']} → ${r['Evaluatee Name']}: ${error.message}`); else ok++;
   }
   return done(`Imported ${ok}. Unmatched/failed (${unmatched.length}):\n${unmatched.join('\n')}`, unmatched.length === 0);
+}
+
+export async function uploadReport(_: R | null, fd: FormData): Promise<R> {
+  const { sb } = await requireSlt();
+  const projectId = String(fd.get('project_id') ?? '');
+  const cycleId = String(fd.get('cycle_id') ?? '');
+  const file = fd.get('pdf') as File | null;
+  if (!projectId || !cycleId) return { ok: false, message: 'Missing project or round.' };
+  if (!file || !file.size) return { ok: false, message: 'Choose a PDF first.' };
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return { ok: false, message: 'Only PDF files.' };
+  if (file.size > MAX_REPORT_BYTES) return { ok: false, message: 'PDF must be under 10 MB.' };
+  const { error } = await sb.storage.from(REPORTS_BUCKET)
+    .upload(reportPath(projectId, cycleId), file, { upsert: true, contentType: 'application/pdf' });
+  return error ? { ok: false, message: error.message } : done(`Uploaded ${file.name}.`);
+}
+
+export async function deleteReport(fd: FormData) {
+  const { sb } = await requireSlt();
+  await sb.storage.from(REPORTS_BUCKET).remove([reportPath(String(fd.get('project_id')), String(fd.get('cycle_id')))]);
+  revalidatePath('/admin');
 }

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requirePerson } from '@/lib/session';
 import { CORE, LEADERSHIP } from '@/lib/forms';
+import { REPORTS_BUCKET } from '@/lib/reports';
 
 type Score = { project_id: string; project_name: string; person_id: string; full_name: string;
   self_score: number | null; manager_score: number | null; composite: number | null; n_evals: number };
@@ -14,7 +15,7 @@ const f2 = (n: number | null | undefined) => (n == null ? '—' : Number(n).toFi
 const MIN_UPWARD = 3;
 
 export default async function MyProject() {
-  const { sb, person } = await requirePerson();
+  const { sb, person, projects: myProjects } = await requirePerson();
   if (!['Project Manager', 'Senior Consultant', 'External Lead'].includes(person.role)) notFound();
   const external = person.role === 'External Lead';  // not reviewed, so no feedback section
 
@@ -35,6 +36,14 @@ export default async function MyProject() {
   const U = ((up ?? []) as Upward[])[0];
   const projects = [...new Map(S.map((s) => [s.project_id, s.project_name])).entries()];
 
+  // Report PDFs this person can open (storage policies only list files they're allowed to read).
+  const reports = cycleId
+    ? (await Promise.all(myProjects.map(async (p) => {
+        const { data } = await sb.storage.from(REPORTS_BUCKET).list(p.id);
+        return data?.some((o) => o.name === `${cycleId}.pdf`) ? p : null;
+      }))).filter((p): p is { id: string; name: string } => !!p)
+    : [];
+
   return (
     <div className="flex flex-col gap-8">
       <header>
@@ -42,6 +51,22 @@ export default async function MyProject() {
         <h1 className="mt-1 text-2xl font-bold tracking-tight">My project</h1>
         <p className="mt-1 text-sm text-muted">{external ? 'How your consultants are doing.' : 'How your consultants are doing, and anonymous feedback about you.'}</p>
       </header>
+
+      {reports.length > 0 && (
+        <section className="flex flex-col gap-3">
+          {reports.map((p) => (
+            <a key={p.id} href={`/project/report/${p.id}`} target="_blank" rel="noopener"
+              className="card flex items-center gap-4 p-5 transition hover:border-navy/30">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent-50 text-xs font-black text-accent-600">PDF</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{cycle?.round.replace(' Evaluation', '')} report · {p.name}</span>
+                <span className="block text-xs text-muted">{cycle?.term} · from EntreCorps leadership</span>
+              </span>
+              <span className="btn-primary min-h-9 text-xs">Open PDF</span>
+            </a>
+          ))}
+        </section>
+      )}
 
       {!external && <section>
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-navy">Feedback about you</h2>

@@ -2,8 +2,9 @@ import { requireSlt } from '@/lib/session';
 import ActionForm from '@/components/ActionForm';
 import {
   importRoster, setPersonActive, addProject, setProjectActive, createCycle, setCycleOpen,
-  deleteCycleEvaluations, saveWeights, saveSettings, importResponses,
+  deleteCycleEvaluations, saveWeights, saveSettings, importResponses, uploadReport, deleteReport,
 } from './actions';
+import { REPORTS_BUCKET } from '@/lib/reports';
 
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-navy">{children}</h2>;
 const Box = ({ children }: { children: React.ReactNode }) => <section className="card p-6">{children}</section>;
@@ -17,6 +18,18 @@ export default async function Admin() {
       sb.from('cycles').select('*').order('term', { ascending: false }), sb.from('weights').select('*'),
       sb.from('app_settings').select('*')]);
   const S = Object.fromEntries((settings ?? []).map((s) => [s.key, s.value]));
+  // Reports are filed under the open round, or the most recent one.
+  const { data: reportCycleId } = await sb.rpc('current_or_latest_cycle');
+  const reportCycle = cycles?.find((c) => c.id === reportCycleId);
+  const activeProjects = (projs ?? []).filter((p) => p.active);
+  const reportFiles = new Map<string, string>();
+  if (reportCycleId) {
+    await Promise.all(activeProjects.map(async (p) => {
+      const { data } = await sb.storage.from(REPORTS_BUCKET).list(p.id);
+      const f = data?.find((o) => o.name === `${reportCycleId}.pdf`);
+      if (f) reportFiles.set(p.id, f.updated_at ?? f.created_at ?? '');
+    }));
+  }
   const W = (c: string, k: 'consultant_pct' | 'pm_sc_pct') => weights?.find((w) => w.component === c)?.[k] ?? 0;
 
   return (
@@ -64,6 +77,40 @@ export default async function Admin() {
           <select name="round" className="input w-auto"><option>Mid-term Evaluation</option><option>Final Evaluation</option></select>
           <input type="date" name="closes_at" className="input w-auto" />
           <button className="btn-primary">Create round</button></form>
+      </Box>
+
+      <Box><H>Project reports{reportCycle ? ` · ${reportCycle.term} ${reportCycle.round}` : ''}</H>
+        <p className="mb-4 text-sm text-muted">
+          Upload one PDF per project. Only that project&apos;s PM and SC (and SLT) can open it, from their My project page.
+          Uploading again replaces the file.
+        </p>
+        {!reportCycleId ? <p className="text-sm text-muted">Create a round first.</p> : (
+          <ul className="flex flex-col divide-y divide-line rounded-xl border border-line">
+            {activeProjects.map((p) => (
+              <li key={p.id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{p.name}</div>
+                  {reportFiles.has(p.id) ? (
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="badge bg-good-50 text-good">Uploaded {new Date(reportFiles.get(p.id)!).toLocaleDateString()}</span>
+                      <a href={`/project/report/${p.id}`} target="_blank" rel="noopener" className="font-semibold text-navy hover:underline">Open</a>
+                      <form action={deleteReport}>
+                        <input type="hidden" name="project_id" value={p.id} /><input type="hidden" name="cycle_id" value={reportCycleId} />
+                        <button className="font-semibold text-warn hover:underline">Remove</button>
+                      </form>
+                    </div>
+                  ) : <div className="text-xs text-muted">No report yet</div>}
+                </div>
+                <ActionForm action={uploadReport} submit={reportFiles.has(p.id) ? 'Replace' : 'Upload'}>
+                  <input type="hidden" name="project_id" value={p.id} />
+                  <input type="hidden" name="cycle_id" value={reportCycleId} />
+                  <input type="file" name="pdf" accept="application/pdf,.pdf" required
+                    className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-navy-50 file:px-3 file:py-2 file:font-semibold file:text-navy" />
+                </ActionForm>
+              </li>
+            ))}
+          </ul>
+        )}
       </Box>
 
       <Box><H>Weights</H>
