@@ -35,7 +35,7 @@ Every review cycle, members filled out four separate Google Forms (Self, Manager
 | Framework | Next.js 15 (App Router, Server Components, Server Actions), TypeScript |
 | Styling | Tailwind CSS v4, custom design tokens in Illinois navy and orange |
 | Database | Supabase Postgres |
-| Auth | Supabase Auth with Google OAuth, plus an email magic-link fallback |
+| Auth | Supabase Auth with Google OAuth |
 | Validation | Zod (one schema checks the form in the browser and again on the server) |
 | Charts | Recharts |
 | Hosting | Vercel, auto-deploying from `main` |

@@ -1,11 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
 import { Logo } from '@/components/Logo';
 import LoginForm from './LoginForm';
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
-  const sb = await createClient();
-  const { data } = await sb.from('app_settings').select('value').eq('key', 'allowed_email_domain').maybeSingle();
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <section className="relative hidden overflow-hidden bg-navy p-12 text-white lg:flex lg:flex-col">
@@ -27,7 +24,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
           <p className="mt-1 mb-8 text-sm text-muted">Sign in to complete your evaluations.</p>
           {error && <p className="mb-4 rounded-xl border border-warn/20 bg-warn-50 p-3 text-sm text-warn">{error}</p>}
-          <LoginForm domain={data?.value ?? 'illinois.edu'} />
+          <LoginForm />
           <p className="mt-10 text-center text-xs text-muted">
             <a href="/privacy" className="hover:text-ink hover:underline">Privacy Policy</a>
             <span className="mx-2">·</span>
